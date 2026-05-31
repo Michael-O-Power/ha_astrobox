@@ -220,7 +220,7 @@ class AstroBoxNumericJobSensor(AstroBoxBaseEntity, SensorEntity):
 
 
 class AstroBoxDiskUsageSensor(AstroBoxBaseEntity, SensorEntity):
-    """Tracks host memory disk allocations safely."""
+    """Tracks host filesystem disk usage metrics dynamically."""
     _attr_native_unit_of_measurement = "%"
     _attr_icon = "mdi:micro-sd"
 
@@ -229,12 +229,19 @@ class AstroBoxDiskUsageSensor(AstroBoxBaseEntity, SensorEntity):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_system_disk_usage"
 
     @property
-    def name(self) -> str: return "AstroBox Storage Disk Usage"
+    def name(self) -> str:
+        return "AstroBox Storage Disk Usage"
 
     @property
     def native_value(self) -> float | None:
+        """Calculate percentage from raw total and used bytes."""
         try:
-            # Fallback metrics extraction safety loops
-            usage = self.coordinator.data.get("server", {}).get("diskspace", {}).get("usage")
-            return float(usage) if usage else 0.0
-        except (KeyError, TypeError): return None
+            storage = self.coordinator.data.get("storage", {})
+            total = float(storage.get("driveTotal", 0))
+            used = float(storage.get("driveUsed", 0))
+            
+            if total > 0:
+                return round((used / total) * 100, 1)
+        except (KeyError, TypeError, ZeroDivisionError):
+            pass
+        return 0.0

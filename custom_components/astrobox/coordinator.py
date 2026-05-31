@@ -14,10 +14,10 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 class AstroBoxDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching AstroBox data from the local REST API."""
+    """Class to manage fetching AstroBox data concurrently across all verified endpoints."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize the coordinator using the config entry configuration."""
+        """Initialize the coordinator."""
         self.config_entry = entry
         self.host = entry.data["host"]
         self.api_key = entry.data["api_key"]
@@ -34,42 +34,60 @@ class AstroBoxDataUpdateCoordinator(DataUpdateCoordinator):
         headers = {"X-Api-Key": self.api_key}
         endpoints = {
             "printer": f"http://{self.host}/api/printer",
-            "job": f"http://{self.host}/api/job"
+            "job": f"http://{self.host}/api/job",
+            "settings_printer": f"http://{self.host}/api/settings/printer",
+            "storage": f"http://{self.host}/api/settings/software/storage",
+            "profile": f"http://{self.host}/api/printer-profile",
+            "camera": f"http://{self.host}/api/camera/connected"
         }
         
         data = {}
+        success_count = 0
         connector = aiohttp.TCPConnector(family=socket.AF_INET)
         
-        async with aiohttp.ClientSession(connector=connector) as session:
-            for key, url in endpoints.items():
-                try:
-                    async with async_timeout.timeout(10):
-                        async with session.get(url, headers=headers) as response:
+        async def fetch_endpoint(key: str, url: str) -> tuple[str, dict]:
+            nonlocal success_count
+            try:
+                async with async_timeout.timeout(5):
+                    async with session.get(url, headers=headers) as response:
+                        if response.status == 200:
+                            success_count += 1
+                            return key, await response.json()
                             
-                            if response.status == 200:
-                                data[key] = await response.json()
-                                
-                            elif response.status == 409:
-                                _LOGGER.debug("AstroBox reports printer is not operational (409) for %s", key)
-                                if key == "printer":
-                                    data["printer"] = {
-                                        "state": {
-                                            "text": "Offline", 
-                                            "flags": {"printing": False, "operational": False, "ready": False}
-                                        },
-                                        "temperature": {}
-                                    }
-                                elif key == "job":
-                                    data["job"] = {
-                                        "state": "Offline",
-                                        "progress": {"completion": None}
-                                    }
-                            else:
-                                raise UpdateFailed(f"Unexpected API status: {response.status}")
-                                
-                except (aiohttp.ClientConnectorError, asyncio.TimeoutError) as err:
-                    raise UpdateFailed(f"Cannot reach AstroBox server: {err}")
-                except Exception as err:
-                    raise UpdateFailed(f"Unexpected error communicating with AstroBox: {err}")
-                    
+                        elif response.status == 409:
+                            success_count += 1
+                            if key == "printer":
+                                return key, {
+                                    "state": {"text": "Offline", "flags": {"printing": False, "operational": False, "ready": False}},
+                                    "temperature": {}
+                                }
+                            if key == "job":
+                                return key, {"state": "Offline", "progress": {"completion": None}}
+                            if key == "camera":
+                                return key, {"isCameraConnected": False, "cameraName": "None"}
+                            return key, {}
+                        else:
+                            return key, {}
+            except Exception as err:
+                _LOGGER.debug("Optional AstroBox endpoint %s temporarily unavailable: %s", key, err)
+                if key == "printer":
+                    return key, {
+                        "state": {"text": "Offline", "flags": {"printing": False, "operational": False, "ready": False}},
+                        "temperature": {}
+                    }
+                if key == "job":
+                    return key, {"state": "Offline", "progress": {"completion": None}}
+                if key == "camera":
+                    return key, {"isCameraConnected": False, "cameraName": "None"}
+                return key, {}
+
+        async with aiohttp.ClientSession(connector=connector) as session:
+            tasks = [fetch_endpoint(key, url) for key, url in endpoints.items()]
+            results = await asyncio.gather(*tasks)
+            for key, res in results:
+                data[key] = res
+                
+        if success_count == 0:
+            raise UpdateFailed("Unable to communicate with the AstroBox server host.")
+                        
         return data
