@@ -1,5 +1,6 @@
 """Support for AstroBox (AstroPrint) action buttons."""
 from __future__ import annotations
+import asyncio
 import logging
 import socket
 import aiohttp
@@ -36,6 +37,8 @@ async def async_send_post(coordinator: AstroBoxDataUpdateCoordinator, url: str, 
                     )
                     
                     if resp.status in (200, 204): 
+                        # Give the Marlin board a brief moment to finish its background serial initialization
+                        await asyncio.sleep(3)
                         await coordinator.async_request_refresh()
                     else:
                         _LOGGER.error(
@@ -175,7 +178,7 @@ class AstroBoxCooldownButton(AstroBoxBaseEntity, ButtonEntity):
         else:
             url = f"http://{self.coordinator.host}/api/printer/bed"
             payload = {"command": "target", "target": 0}
-        await self._send_post(url, payload)
+        await async_send_post(self.coordinator, url, payload)
 
 
 class AstroBoxJobButton(AstroBoxBaseEntity, ButtonEntity):
@@ -206,4 +209,4 @@ class AstroBoxJobButton(AstroBoxBaseEntity, ButtonEntity):
             payload = {"command": "pause", "action": "resume"}
         else:
             payload = {"command": "cancel"}
-        await self._send_post(url, payload)
+        await async_send_post(self.coordinator, url, payload)

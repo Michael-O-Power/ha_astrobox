@@ -12,7 +12,7 @@ from .coordinator import AstroBoxDataUpdateCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 # List of platforms supported by this integration
-PLATFORMS: list[str] = ["sensor", "binary_sensor", "button", "select", "number"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "button", "select", "number", "camera"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
