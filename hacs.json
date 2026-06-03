@@ -1,6 +1,5 @@
 {
   "name": "AstroBox",
-  "iot_class": "local_polling",
   "render_readme": true,
   "homeassistant": "2024.1.0"
 }
