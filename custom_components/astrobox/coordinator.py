@@ -6,6 +6,7 @@ import aiohttp
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -66,8 +67,16 @@ class AstroBoxDataUpdateCoordinator(DataUpdateCoordinator):
                             if key == "camera":
                                 return key, {"isCameraConnected": False, "cameraName": "None"}
                             return key, {}
+                        elif response.status in (401, 403):
+                            # Raise this immediately so it isn't caught by the generic Exception handler
+                            raise ConfigEntryAuthFailed("AstroBox API key rejected")
                         else:
                             return key, {}
+                            
+            except ConfigEntryAuthFailed:
+                # Bubble this up to Home Assistant to trigger the Reauth flow
+                raise
+                
             except Exception as err:
                 _LOGGER.debug("Optional AstroBox endpoint %s temporarily unavailable: %s", key, err)
                 if key == "printer":

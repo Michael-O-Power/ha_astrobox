@@ -129,3 +129,63 @@ class AstroBoxConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         return self.async_show_form(step_id="user", data_schema=DATA_SCHEMA, errors=errors)
+
+    async def async_step_reauth(self, entry_data: dict) -> FlowResult:
+        """Handle initiation of re-authentication when API key is rejected."""
+        self.reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input: dict | None = None) -> FlowResult:
+        """Handle the user confirming the re-authentication."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Re-scrape the key using the existing host IP
+            host = self.reauth_entry.data["host"]
+            new_api_key = await async_extract_api_key(host)
+            
+            if not new_api_key:
+                errors["base"] = "api_key_not_found"
+            else:
+                # Update the entry with the new key and immediately reload the integration
+                return self.async_update_reload_and_abort(
+                    self.reauth_entry,
+                    data={**self.reauth_entry.data, "api_key": new_api_key}
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            description_placeholders={"host": self.reauth_entry.data["host"]},
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(self, user_input: dict | None = None) -> FlowResult:
+        """Handle manual user reconfiguration (e.g., if the AstroBox IP changes)."""
+        errors: dict[str, str] = {}
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+
+        if user_input is not None:
+            host = user_input["host"]
+            new_api_key = await async_extract_api_key(host)
+            
+            if not new_api_key:
+                errors["base"] = "api_key_not_found"
+            else:
+                # Preserve the MAC address, but update host and API key
+                new_data = {
+                    **entry.data, 
+                    "host": host, 
+                    "api_key": new_api_key
+                }
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data=new_data
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({
+                vol.Required("host", default=entry.data.get("host")): str,
+            }),
+            errors=errors,
+        )

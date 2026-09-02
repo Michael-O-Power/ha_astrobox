@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "reauth_confirm": {
+        "title": "Reauthenticate AstroBox",
+        "description": "The API key for AstroBox at {host} is no longer valid. Click submit to automatically fetch the new key."
+      },
+      "reconfigure": {
+        "title": "Reconfigure AstroBox",
+        "data": {
+          "host": "IP Address or Hostname"
+        }
+      }
+    },
+    "error": {
+      "api_key_not_found": "Could not extract a valid API key from the AstroBox web interface."
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Re-configuration was successful"
+    }
+  }
+}
